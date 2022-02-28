@@ -1,0 +1,1416 @@
+---
+title: "Serie A Fantasy Football Analysis"
+author: "Giovanni Cappiello"
+date: "13/1/2022"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This projects was born out of my passion for both football (and fantasy football) and data analysis.
+
+More specifically, with this project I have tried to test my ability of using the tools available in R, a language and environment for statistical computing and graphics.
+
+This is just the beginning, the analysis in here are basic and simple, but still interesting, in my opinion (especially for those who want to win a Fantasy Football League by using real data!).
+
+This little work was much fun to me and it allowed me to learn tons of news thing that I will implement in the next projects!
+
+## The Process
+
+For this analysis I have done everything buy myself.
+The collection, cleaning and the visuals are all products of my own work.
+In this section, I will briefly discuss what how I did all of this.
+
+First thing, I needed data, and, like every normal person, I goggled something like "football players data" and, I didn't get anything.
+I didn't give up and after few more attempts i finally found the website "Fantagazzetta.it", which has a section where you can download not only the data from the current season in an excel format, but also past seasons.
+Therefore, I downloaded the last three seasons, counting the one still going on.
+Unfortunately, but not surprisingly, the data inside this files were not clean or complete.
+
+The second thing to do after getting the data was to clean what needs to be clean, for example get rid of variable which I would not be using, give an homogeneous format to all the files and add missing values and or information from different sources.
+For this last task, I scraped data from the website "Transfermarkt".
+
+This being done, I merged everything in a single data-set and started analyzing it as if I was preparing my next fantasy auction with my friends.
+
+```{r libraries working directory etc, include=FALSE}
+
+if (!require(wesanderson)) {
+  install.packages("wesanderson")
+  library("wesanderson")
+}
+if (!require(RColorBrewer)) {
+  install.packages("RColorBrewer")
+  library("RColorBrewer")
+}
+library(readxl)
+library("tidyverse")
+library(stringr)
+library(ggpubr)
+if (!require(hrbrthemes)) {
+  install.packages("hrbrthemes")
+  library("hrbrthemes")
+}
+if (!require("janitor")) {
+  install.packages("janitor")
+library(janitor)
+}
+#library("plotly")
+if(!require("treemap")) {
+  install.packages("treemap")
+  library(treemap)
+}
+library(viridis)
+library(dplyr)
+library(viridis)
+```
+
+```{r data, include=F}
+setwd("D:/Progetti vari/Fantacalcio R")
+dset22 <- read_excel("Statistiche_Fantacalcio_2021-22_half_season.xlsx", skip = 1)
+dset21 <- read_excel("Statistiche_Fantacalcio_2020-21.xlsx")
+dset20 <- read_excel("Statistiche_Fantacalcio_2019-20.xlsx")
+
+dset22$Year=2022
+dset21$Year=2021
+dset20$Year=2020
+
+Dset_20_21 <- rbind(dset20, dset21)
+
+Dset_final <- bind_rows(Dset_20_21, dset22)
+
+Dset_final <- arrange(Dset_final,Id)
+Dset_final$Year <-  as.factor(Dset_final$Year)
+rm(Dset_20_21)
+```
+
+## Goalkeepers
+
+Personally, I like to think about the goalkeeper first.
+It may not appear so, but it's actually tricky.
+The trade off is between a goalkeeper from a top team, which usually concede less goals, or a lower-range team, which usually concede more, but on the other hands have more chances to showcase their ability and cost significantly less.
+
+```{r, include= T, fig.height = 11, fig.width = 10, include= FALSE}
+Graph_set_gk <- Dset_final %>%
+  filter(R == "P" &
+           (Year==2020 | Year==2021 | Year==2022)) %>% 
+  group_by(Nome, Year) %>% 
+  summarise(Mv, Mf, Rp, Gf, Ass, Pg, 
+            Gf_on_Pg=  Gf/Pg, 
+            Ass_on_Pg=  Ass/Pg,
+            Num_bonus = (Gf+ Ass +sum(Rp)),
+            Num_malus = (sum(Gs)+ sum(Amm) + sum(Esp)+ sum(`R-`)),
+            Amount_bonus = (Gf*3+ Ass +sum(Rp)*3),
+            Amount_malus = (sum(Gs)+ sum(Amm)*0.5 + sum(Esp))) %>% 
+  filter((Year==2020 & Pg>8) | (Year==2021 & Pg>8) | (Year==2022 & Pg>4) ) %>% 
+  arrange(Nome)
+
+#sat condizionate
+stat_cond_gk <- Graph_set_gk %>% 
+  group_by(Year) %>% 
+  summarise(Mean_Mv = mean(Mv), 
+            Mean_Mf = mean(Mf),
+            Sum_Gf = sum (Gf),
+            Sum_Ass = sum(Ass))
+```
+
+```{r, include= T, fig.height = 11, fig.width = 10}
+Gk_Mv_20 <- Graph_set_gk %>%
+  filter(Year==2020) %>% 
+  arrange(desc(-Mv)) %>% 
+  ggplot( aes(y=reorder(Nome, Mv), x=Mv)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill= "dark orange") +
+  geom_vline(xintercept = 6.179600,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mv), x=Mv, label = Pg),
+              hjust = 1.5, colour = "white", size= 3, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="turbo") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2019/20")+
+  annotate("Text", x=6.5, y=5, label="Overall average: 6.2",
+           color="black", size = 3.5, angle= 90) 
+
+
+Gk_Mv_21 <- Graph_set_gk %>%
+  filter(Year==2021) %>% 
+  arrange(desc(-Mv)) %>% 
+  ggplot( aes(y=reorder(Nome, Mv), x=Mv)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="dark orange") +
+  geom_vline(xintercept = 6.154583,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mv), x=Mv, label = Pg),
+              hjust = 1.5, colour = "white", size= 3, fontface="bold") +
+  scale_fill_brewer(palette = "Paired") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2020/21")+
+  annotate("Text", x=6.4, y=5, label="Overall average: 6.15",
+           color="black", size = 3.5, angle= 90) 
+
+
+Gk_Mv_22 <- Graph_set_gk %>%
+  filter(Year==2022) %>% 
+  arrange(desc(-Mv)) %>% 
+  ggplot( aes(y=reorder(Nome, Mv), x=Mv)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="dark orange") +
+  geom_vline(xintercept = 6.120000,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mv), x=Mv, label = Pg),
+              hjust = 1.5, colour = "white", size= 3, fontface="bold") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2021/22")+
+  annotate("Text", x=6.2, y=5, label="Overall average: 6.12",
+           color="black", size = 3.5, angle= 90) 
+
+
+annotate_figure(ggarrange(Gk_Mv_20, Gk_Mv_21, Gk_Mv_22,
+                          ncol = 3, nrow = 1),
+                top = text_grob("Average Grade Goalkeepers", 
+                                color = "Black", size = 14), 
+                bottom = text_grob("Source: Fantagazzetta.it", size=10))
+```
+
+To solve this puzzle, I plotted the above graph, which ranks the goalkeepers with the highest average grade (according to the staff of fantagazzetta) without considering the bonus or malus, together with the number of presence per season and the overall average of all the player in the same position.
+
+As predicted, the first positions in this rank are populated by goal keepers playing for mid-table teams such as Sassuolo, Torino, Cagliari and Sampdoria, with th only exception of Donnarumma Gianluigi, that ranked 4th last season and played for Milan, arrived second in 2021.
+
+```{r, include= T, fig.height = 11, fig.width = 10, echo=F}
+Gk_Mf_20 <- Graph_set_gk %>%
+  filter(Year==2020) %>% 
+  arrange(desc(-Mf)) %>% 
+  ggplot( aes(y=reorder(Nome, Mf), x=Mf)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="dark orange") +
+  geom_vline(xintercept = 4.708000,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mf), x=Mf, label = Pg),
+              hjust = 1.5, colour = "white", size= 3, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(2, NA)) +
+  labs(title = "Season 2019/20")+
+  annotate("Text", x=5, y=5, label="Overall average: 4.7",
+           color="black", size = 3.5, angle= 90) 
+
+
+Gk_Mf_21 <- Graph_set_gk %>%
+  filter(Year==2021) %>% 
+  arrange(desc(-Mf)) %>% 
+  ggplot( aes(y=reorder(Nome, Mf), x=Mf)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7 , fill="dark orange") +
+  geom_vline(xintercept = 4.728333,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mf), x=Mf, label = Pg),
+              hjust = 1.5, colour = "white", size= 3, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(2 , NA)) +
+  labs(title = "Season 2020/21")+
+  annotate("Text", x=5, y=5, label="Overall average: 4.7",
+           color="black", size = 3.5, angle= 90) 
+
+
+Gk_Mf_22 <- Graph_set_gk %>%
+  filter(Year==2022) %>% 
+  arrange(desc(-Mf)) %>% 
+  ggplot( aes(y=reorder(Nome, Mf), x=Mf)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="dark orange") +
+  geom_vline(xintercept = 4.633333,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mf), x=Mf, label = Pg),
+              hjust = 1.5, colour = "white", size= 3, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(2 , NA)) +
+  labs(title = "Season 2021/2022 ")+
+  annotate("Text", x=4.9, y=5, label="Overall average: 4.6",
+           color="black", size = 3.5, angle= 90) 
+
+annotate_figure(ggarrange(Gk_Mf_20, Gk_Mf_21, Gk_Mf_22,
+                          ncol = 3, nrow = 1),
+                top = text_grob("Average Fantagrade Golkeepers", 
+                                color = "Black", size = 14),
+                bottom= text_grob("Source: Fantagazzetta.it.it", size = 10))
+```
+
+Surely it is more interesting to watch at the same graph were bonuses and maluses are taken into account.
+In this database, finishing a game with a clean-sheet does not give any bonuses, for this reason the final grade is just the result of the bonuses derived from saving penalties minus the maluses resulted from yellow and red card and conceding goals.
+In this way, it is logical to expect the fanta average to be lower than the normal one, contrary to what happens with all the other roles.
+
+In this new rank, goalkeepers from big teams like Inter, Juventus and Napoli reach the top positions, as a result of defense that concedes less goals to the opponent team.
+However, there is no shortage of surprises.
+Just below the first position we find Gollini and Sportiello from Atalanta, Consigli from Sassuolo, Milinkovic-Savic from Torino and Dragowski from Fiorentina.
+
+Next, since some people play with the clean-sheet-bonus rule, it is interesting to rank the player by number of clean sheets:
+
+```{r cleansheet, fig.height=11, fig.width=10, echo=F}
+cleansheet <- bind_rows(read_excel("D:/Progetti vari/Fantacalcio R/cleansheet_table.xlsx", 
+                                   sheet = "2019-2020"), read_excel("D:/Progetti vari/Fantacalcio R/cleansheet_table.xlsx", 
+                           sheet = "2020-2021"), read_excel("D:/Progetti vari/Fantacalcio R/cleansheet_table.xlsx", 
+                                                            sheet = "2021-2022"), .id="id")
+
+cleansheet$id <-  ifelse(cleansheet$id==1, 2020, ifelse(cleansheet$id==2, 2021, 2022))
+cleansheet <- cleansheet %>% 
+  separate(Giocatore, into = c("Nome", "Giocatore"), sep = " ", extra = "merge", fill="left") %>% 
+  rename(Year=id) %>% 
+  select(-c(`#`, "Nome")) %>% 
+  clean_names() %>% 
+  mutate(giocatore= toupper(giocatore))
+
+cleansheet$percentuale <- ifelse(cleansheet$percentuale=="%", 0, cleansheet$percentuale)
+
+cleansheet_graph_20 <- cleansheet %>% 
+  filter(year==2020, presenze>10) %>% 
+  arrange(senza_gol) %>% 
+  mutate(giocatore = factor(giocatore, giocatore)) %>% 
+  ggplot( aes(y=reorder(giocatore, senza_gol), x=senza_gol)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7,  fill= "dark orange" ) +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  labs(title = "Season 2019/20")+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  scale_x_continuous(expand = expansion(mult = c(0, .1)))+
+  theme(plot.title = element_text(size=10))+
+  theme(legend.position="none")
+
+cleansheet_graph_21 <- cleansheet %>% 
+  filter(year==2021, presenze>10) %>% 
+  arrange(senza_gol) %>% 
+  mutate(giocatore = factor(giocatore, giocatore)) %>% 
+  ggplot( aes(y=reorder(giocatore, senza_gol), x=senza_gol)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7,  fill= "dark orange" ) +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  labs(title = "Season 2020/21")+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  scale_x_continuous(expand = expansion(mult = c(0, .1)))+
+  theme(plot.title = element_text(size=10))+
+  theme(legend.position="none")
+
+cleansheet_graph_22 <- cleansheet %>% 
+  filter(year==2022, presenze>5) %>% 
+  arrange(senza_gol) %>% 
+  mutate(giocatore = factor(giocatore, giocatore)) %>% 
+  ggplot( aes(y=reorder(giocatore, senza_gol), x=senza_gol)) +
+  labs(title = "Season 2021/22")+
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7,  fill= "dark orange" ) +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  scale_x_continuous(breaks=c(0,5,10), expand = expansion(mult = c(0, .1)))+
+  theme(plot.title = element_text(size=10, hjust = 0))+
+  theme(legend.position="none")
+
+
+
+annotate_figure(ggarrange(cleansheet_graph_20, cleansheet_graph_21, cleansheet_graph_22,
+                          ncol = 3, nrow = 1),
+                top = text_grob("Number of Cleansheets per Season", 
+                                      color = "Black", size = 14),
+                bottom = text_grob("Source: Transfermarkt"))
+
+```
+
+The data go only in one direction in this case, if you play by this rule it is convenient to invest in an expensive goalkeeper from a team aiming to win the championship or to qualify for the Champions League.
+
+Another strategy is to buy a goalkeeper that excels at saving penalties.
+For this reason, in the next figure, I plotted, for every season, the percentage of penalties saved by each goalkeeper (bar-chart, left axis), among those who saved at least one, and the number of penalties they have faced (red dot, right axis).
+The data for this chart have been collected form "Transfermarkt".
+
+```{r, fig.width=11, fig.height=10, include=F}
+Penalty <- bind_rows(read_excel("D:/Progetti vari/Fantacalcio R/Penalty_table.xlsx", 
+                                 sheet = "2019-20"), 
+                     read_excel("D:/Progetti vari/Fantacalcio R/Penalty_table.xlsx", 
+                                 sheet = "2020-21"), 
+                     read_excel("D:/Progetti vari/Fantacalcio R/Penalty_table.xlsx", 
+                                 sheet = "2021-22"), .id="id")
+
+Penalty$id <-  ifelse(Penalty$id==1, 2020, ifelse(Penalty$id==2, 2021, 2022))
+Penalty <- Penalty %>% 
+  separate(Giocatore, into = c("Nome", "Giocatore"), sep = " ", extra = "merge", fill="left") %>% 
+  rename(Year=id) %>% 
+  select(-c("Nome")) %>% 
+  clean_names()
+```
+
+```{r, fig.width=11, fig.height=10}
+Penalty_20 <-  Penalty %>% 
+    filter(year==2020) %>% 
+    mutate(subiti= contro-parati) %>% 
+    select(c("giocatore", "quota", "contro")) %>% 
+    arrange(giocatore, desc(giocatore)) %>% 
+    ggplot()+
+    geom_col(aes(y=giocatore, x=quota, fill= giocatore))+
+    geom_text(aes(y=reorder(giocatore, desc(giocatore)), x=quota, label = scales::percent(quota, 2)),
+              vjust = -0.5, colour = "black", size= 3) +
+    geom_point(aes(y=giocatore, x= contro/10), size= 2, color="red", fill= "red", shape= 16)+
+    ylab("") +
+    xlab("% saved penalties")+ 
+    coord_flip()+
+    theme_gray() +
+    scale_fill_viridis(discrete=TRUE, option="viridis") +
+    theme(axis.ticks.y.right = element_line(color = "red"),
+        axis.text.y.right = element_text(color = "red"), 
+        axis.title.y.right = element_text(color = "red")
+        )+
+    labs(title = "Season 2019/20")+
+    theme(axis.text.x = element_text(angle = 90)) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    scale_x_continuous(limits = c(0, 1.35), expand = c(0, 0), labels = scales::percent, 
+                       sec.axis = sec_axis(~.*10, name="# penalties against", breaks = c(1, 3, 5, 7, 9, 11, 13)))+
+    theme(plot.title = element_text(size=13, hjust = 0))+
+    theme(legend.position="none", legend.title = element_blank())
+
+Penalty_21 <- Penalty %>% 
+    filter(year==2021) %>% 
+    mutate(subiti= contro-parati) %>% 
+    select(c("giocatore", "quota", "contro")) %>% 
+    arrange(giocatore, desc(giocatore)) %>% 
+    ggplot()+
+    geom_col(aes(y=giocatore, x=quota, fill= giocatore))+
+    geom_text(aes(y=reorder(giocatore, desc(giocatore)), x=quota, label = scales::percent(quota, 2)),
+              vjust = -0.5, colour = "black", size= 3) +
+    geom_point(aes(y=giocatore, x= contro/10), size= 2, color="red", fill= "red", shape= 16)+
+    ylab("") +
+    xlab("% saved penalties")+ 
+    coord_flip()+
+    theme_gray() +
+    scale_fill_viridis(discrete=TRUE, option="viridis") +
+    theme(axis.ticks.y.right = element_line(color = "red"),
+        axis.text.y.right = element_text(color = "red"), 
+        axis.title.y.right = element_text(color = "red")
+        )+
+    labs(title = "Season 2020/21")+
+    theme(axis.text.x = element_text(angle = 90)) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    scale_x_continuous(limits = c(0, 1.35), expand = c(0, 0), labels = scales::percent, 
+                       sec.axis = sec_axis(~.*10, name="# penalties against", breaks = c(1, 3, 5, 7, 9, 11, 13)))+
+    theme(plot.title = element_text(size=13, hjust = 0))+
+    theme(legend.position="none", legend.title = element_blank())
+  
+Penalty_22 <- Penalty %>% 
+    filter(year==2022) %>% 
+    mutate(subiti= contro-parati) %>% 
+    select(c("giocatore", "quota", "contro")) %>% 
+    arrange(giocatore, desc(giocatore)) %>% 
+    ggplot()+
+    geom_col(aes(y=giocatore, x=quota, fill= giocatore))+
+    geom_text(aes(y=reorder(giocatore, desc(giocatore)), x=quota, label = scales::percent(quota, 2)),
+              vjust = -0.5, colour = "black", size= 3) +
+    geom_point(aes(y=giocatore, x= contro/10), size= 2, color="red", fill= "red", shape= 16)+
+    ylab("") +
+    xlab("% saved penalties")+ 
+    coord_flip()+
+    theme_gray() +
+    scale_fill_viridis(discrete=TRUE, option="viridis") +
+    theme(axis.ticks.y.right = element_line(color = "red"),
+        axis.text.y.right = element_text(color = "red"), 
+        axis.title.y.right = element_text(color = "red")
+        )+
+    labs(title = "Season 2021/22")+
+    theme(axis.text.x = element_text(angle = 90)) +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    scale_x_continuous(limits = c(0, 1.35), expand = c(0, 0), labels = scales::percent, 
+                       sec.axis = sec_axis(~.*10, name="# penalties against", breaks = c(1, 3, 5, 7, 9, 11, 13)))+
+    theme(plot.title = element_text(size=13, hjust = 0))+
+    theme(legend.position="none", legend.title = element_blank())
+
+annotate_figure(ggarrange(Penalty_20, Penalty_21, Penalty_22,
+                          ncol = 1, nrow = 3),
+                top = text_grob("Percentage Saved Penalties and Number of Penalties Against", 
+                                      color = "Black", size = 14),
+                bottom = text_grob("Source: Transfermarkt"))
+
+```
+
+## Defenders
+
+Next on the list are the defenders.
+This is again a delicate role, you need defenders and you need good ones, but they they are designed to lower your total score each game of the fanta league, by receiving more maluses than bonuses.
+
+```{r def data, include=F}
+Graph_set_def <- Dset_final %>%
+  filter(R == "D" &
+           (Year==2020 | Year==2021 | Year==2022)) %>% 
+  group_by(Nome, Year) %>% 
+  summarise(Mv, Mf, Rp, Gf, Ass, Pg, 
+            Gf_on_Pg=  Gf/Pg, 
+            Ass_on_Pg=  Ass/Pg,
+            Num_bonus = (Gf+ Ass +sum(Rp)),
+            Num_malus = (sum(Gs)+ sum(Amm) + sum(Esp)+ sum(`R-`)),
+            Amount_bonus = (Gf*3+ Ass +sum(Rp)*3),
+            Amount_malus = (sum(Gs)+ sum(Amm)*0.5 + sum(Esp))) %>% 
+  filter((Year==2020 & Pg>8) | (Year==2021 & Pg>8) | (Year==2022 & Pg>6) ) %>% 
+  arrange(Nome)
+
+#sat condizionate
+
+stat_cond_def <- Graph_set_def %>% 
+  group_by(Year) %>% 
+  summarise(Mean_Mv = mean(Mv), 
+            Mean_Mf = mean(Mf),
+            Sum_Gf = sum (Gf),
+            Sum_Ass = sum(Ass))
+```
+
+In order to tackle this problem people, usually, resort to two strategies.
+Invest in good and strong central defenders from top clubs, or in fast and agile full-backs playing more advanced in the pitch and therefore more likely to score a goal or to assist a teammate.
+
+The following two figures rank the best 50 defenders according tho their grade and fanta-grade (which includes bonuses and maluses).
+In addition, there is the number of matched played by each player and the overall average of all the defenders that have played at least 20% of the match in a season.
+
+```{r Def MV, fig.height = 11, fig.width = 10, echo=FALSE}
+Def_Mv_20 <- Graph_set_def %>%
+  filter(Year==2020) %>% 
+  mutate(Nome = factor(Nome, Nome)) %>% 
+  arrange(desc(-Mv)) %>% 
+  ungroup() %>% 
+  top_n(50, Mv) %>% 
+  ggplot( aes(y=reorder(Nome, Mv), x=Mv, fill=Year)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7) +
+  geom_vline(xintercept = 5.848681,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mv), x=Mv, label = Pg),
+              hjust = 1.5, colour = "white", size= 3, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2019/20")+
+  annotate("Text", x=6.1, y=5, label="Overall average: 5.9",
+           color="black", size = 3.5, angle= 90) 
+
+Def_Mv_21 <- Graph_set_def %>%
+  filter(Year==2021) %>% 
+  arrange(desc(-Mf)) %>% 
+  ungroup() %>% 
+  top_n(50, Mv) %>% 
+  ggplot( aes(y=reorder(Nome, Mv), x=Mv, fill=Year)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7) +
+  geom_vline(xintercept = 5.85,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mv), x=Mv, label = Pg),
+              hjust = 1.5, colour = "white", size= 3, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2020/21")+
+  annotate("Text", x=6.1, y=5, label="Overall average: 5.9",
+           color="black", size = 3.5, angle= 90) 
+
+Def_Mv_22 <- Graph_set_def %>%
+  filter(Year==2022) %>% 
+  arrange(desc(-Mf)) %>% 
+  ungroup() %>% 
+  top_n(50, Mv) %>% 
+  ggplot( aes(y=reorder(Nome, Mv), x=Mv, fill = Year)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7) +
+  geom_vline(xintercept = 5.902327,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mv), x=Mv, label = Pg),
+              hjust = 1.5, colour = "white", size= 3, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2021/22")+
+  annotate("Text", x=6.1, y=5, label="Overall average: 5.9",
+           color="black", size = 3.5, angle= 90) 
+
+annotate_figure(ggarrange(Def_Mv_20, Def_Mv_21, Def_Mv_22,
+                          ncol = 3, nrow = 1),
+                top = text_grob("Avarage Grade Defenders", 
+                                color = "Black", size = 14),
+                bottom = text_grob("Source: Fantagazzetta.it", size=10))
+```
+
+```{r Def Mf, fig.height=11, fig.width=10, echo=F}
+
+Def_Mf_20 <- Graph_set_def %>%
+  filter(Year==2020) %>% 
+  mutate(Nome = factor(Nome, Nome)) %>% 
+  arrange(desc(-Mf)) %>% 
+  ungroup() %>% 
+  top_n(50, Mf) %>% 
+  ggplot( aes(y=reorder(Nome, Mf), x=Mf, fill= Year)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7) +
+  geom_vline(xintercept = 5.87,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mf), x=Mf, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2019/20")+
+  annotate("Text", x=6.3, y=5, label="Overall average: 5.9",
+           color="black", size = 3.5, angle= 90) 
+
+Def_Mf_21 <- Graph_set_def %>%
+  filter(Year==2021) %>% 
+  arrange(desc(-Mf)) %>% 
+  ungroup() %>% 
+  top_n(50, Mf) %>% 
+  ggplot( aes(y=reorder(Nome, Mf), x=Mf, fill= Year)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7) +
+  geom_vline(xintercept = 5.902327,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mf), x=Mf, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2020/21")+
+  annotate("Text", x=6.3, y=5, label="Overall average: 5.9",
+           color="black", size = 3.5, angle= 90) 
+
+Def_Mf_22 <- Graph_set_def %>%
+  filter(Year==2022) %>% 
+  arrange(desc(-Mf)) %>% 
+  ungroup() %>% 
+  top_n(51, Mf) %>% 
+  ggplot( aes(y=reorder(Nome, Mf), x=Mf, fill= Year)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7) +
+  geom_vline(xintercept = 5.902327,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mf), x=Mf, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2021/22")+
+  annotate("Text", x=6.3, y=5, label="Overall average: 5.9",
+           color="black", size = 3.5, angle= 90) 
+
+annotate_figure(ggarrange(Def_Mf_20, Def_Mf_21, Def_Mf_22,
+                          ncol = 3, nrow = 1),
+                top = text_grob("Average Fantagrade Defenders", 
+                                color = "Black", size = 14), 
+                bottom = text_grob("Source: Fantagazzetta.it", size=10))
+```
+
+As predicted, most of the players in the high part of the table are full- backs, although, few centrals are also ranking high.
+
+Among the surprises of last year, there are Nuytinck, the central defender and captain of the Udinese team, Zappacosta from Atalanta, Dimarco, from Hellas Verona (now playing for Inter), Bremer, from Torino and Faraoni, again from Hellas Verona.
+For the current seasons, instead, the player that I didn't predict would be in such high positions are Crisicito, although he is the designated penalty-shooter for Genoa, Ansaldi from Torino and Fares from Genoa.
+
+Finally, in the next plot, it is represented how is the balance between bonuses and maluses for the defenders with the higher grades.
+In other words, the following graph tells us if a player is more likely to bring extra points or to bring in penalties.
+
+```{r Balance bonus malus, fig.height=11, fig.width=10}
+BM_graph_20 <-   Graph_set_def %>% 
+  filter(Year==2020) %>% 
+  mutate(ris_BM = Amount_bonus - Amount_malus, Tot_BM= Num_bonus+Num_malus) %>% 
+  ungroup() %>% 
+  top_n(50, Mv) %>% 
+  ggplot() + 
+  geom_col(aes(y=reorder(Nome, Mv), x=ris_BM, fill= Nome), alpha=.7, width=.7) +
+  scale_fill_viridis(discrete=T, option="viridis") +
+    ylab("") +
+    xlab("")+
+    theme_gray() +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    theme(legend.position="none")
+  
+BM_graph_21 <-  Graph_set_def %>% 
+    filter(Year==2021) %>% 
+    mutate(ris_BM = Amount_bonus - Amount_malus, Tot_BM= Num_bonus+Num_malus) %>% 
+    ungroup() %>% 
+    top_n(50, Mv) %>% 
+    ggplot(aes(y=reorder(Nome, Mv), x=ris_BM, fill= Nome)) + 
+    geom_bar(stat="identity",  alpha=.7, width=.7) +
+    scale_fill_viridis(discrete=T, option="viridis") +
+    ylab("") +
+    xlab("")+
+    theme_gray() +
+    theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+    theme(legend.position="none") 
+
+BM_graph_22 <- Graph_set_def %>% 
+  filter(Year==2022) %>%
+  mutate(Nome=factor(Nome)) %>% 
+  mutate(ris_BM = Amount_bonus - Amount_malus, Tot_BM= Num_bonus+Num_malus) %>% 
+  ungroup() %>% 
+  top_n(50, Mv) %>% 
+  ggplot(aes(y=reorder(Nome, Mv), x=ris_BM, fill= Nome)) + 
+  geom_bar(stat="identity", alpha=.7, width=.7) +
+  scale_fill_viridis(discrete=T, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none") 
+
+annotate_figure(ggarrange(BM_graph_20, BM_graph_21, BM_graph_22,
+                          ncol = 3, nrow = 1),
+                top = text_grob("Bonus/Malus Balance Defenders", 
+                                color = "Black", size = 14), 
+                bottom = text_grob("Source: Fantagazzetta.it.it", color="Black", size=10))
+```
+
+From this view, it is even more evident what I said before, full-backs are way more likely to gain a bonus, while central defenders have more often than no a negative balance between bonuses and maluses.
+Personally, the best strategy is to build your defense around good full-backs and to complete it with central defenders which are likely to play, and tend not to be to aggressive on the players of the opposite teams.
+
+## Midfielders
+
+This is the most important role in my opinion, both for fantasy and for real football.
+Build a good midfield and you are halfway done.
+Again, here the best strategy is to buy midfielders that are likely to score many goals and do the winning pass as frequent as possible.
+Therefore the most desired midfielders are the one the play closer to the strikers, but let's see if there are some nice surprises.
+
+The figures below follow the same structure as the one already seen for defenders and goalkeepers.
+
+```{r Midfielders data, include=F}
+Graph_set_Mid <- Dset_final %>%
+  filter(R == "C" &
+           (Year==2020 | Year==2021 | Year==2022)) %>% 
+  group_by(Nome, Year) %>% 
+  summarise(Mv, Mf, Rp, Gf, Ass, Pg, 
+            Gf_on_Pg=  Gf/Pg, 
+            Ass_on_Pg=  Ass/Pg,
+            Num_bonus = (Gf+ Ass +sum(Rp)),
+            Num_malus = (sum(Gs)+ sum(Amm) + sum(Esp)+ sum(`R-`)),
+            Amount_bonus = (Gf*3+ Ass +sum(Rp)*3),
+            Amount_malus = (sum(Gs)+ sum(Amm)*0.5 + sum(Esp))) %>% 
+  filter((Year==2020 & Pg>8) | (Year==2021 & Pg>8) | (Year==2022 & Pg>6) ) %>% 
+  arrange(Nome)
+
+#sat condizionate
+
+stat_cond_Mid <- Graph_set_Mid %>% 
+  group_by(Year) %>% 
+  summarise(Mean_Mv = mean(Mv), 
+            Mean_Mf = mean(Mf),
+            Sum_Gf = sum (Gf),
+            Sum_Ass = sum(Ass))
+```
+
+```{r Mid  MV, fig.height=11, fig.width=10, echo=F}
+Mid_Mv_20 <- Graph_set_Mid %>%
+  filter(Year==2020) %>% 
+  mutate(Nome = factor(Nome, Nome)) %>% 
+  arrange(desc(-Mv)) %>% 
+  ungroup() %>% 
+  top_n(50, Mv) %>% 
+  ggplot( aes(y=reorder(Nome, Mv), x=Mv)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="navy") +
+  geom_vline(xintercept = 5.959939,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mv), x=Mv, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="turbo") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2019/20")+
+  annotate("Text", x=6.5, y=10, label="Overall average: 5.96",
+           color="black", size = 3.5, angle= 90) 
+
+Mid_Mv_21 <- Graph_set_Mid %>%
+  filter(Year==2021) %>% 
+  arrange(desc(-Mf)) %>% 
+  ungroup() %>% 
+  top_n(50, Mv) %>% 
+  ggplot( aes(y=reorder(Nome, Mv), x=Mv)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="navy") +
+  geom_vline(xintercept = 5.975325,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mv), x=Mv, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="turbo") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2020/21")+
+  annotate("Text", x=6.5, y=10, label="Overall average: 5.98",
+           color="black", size = 3.5, angle= 90)
+
+Mid_Mv_22 <- Graph_set_Mid %>%
+  filter(Year==2022) %>% 
+  arrange(desc(-Mf)) %>% 
+  ungroup() %>% 
+  top_n(50, Mv) %>% 
+  ggplot( aes(y=reorder(Nome, Mv), x=Mv)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill= "navy") +
+  geom_vline(xintercept = 6.028862,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mv), x=Mv, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="ciridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2021/22")+
+  annotate("Text", x=6.5, y=10, label="Overall average: 6.02",
+           color="black", size = 3.5, angle= 90)
+
+annotate_figure(ggarrange(Mid_Mv_20, Mid_Mv_21, Mid_Mv_22,
+                          ncol = 3, nrow = 1),
+                top = text_grob("Average Grade Midfielders", 
+                                color = "Black", size = 14),
+                bottom = text_grob("Source Fantagazzetta.it", color="Black", size=10))
+```
+
+```{r Mf Midfielders, fig.height=11, fig.width=10, echo=FALSE}
+Mid_Mf_20 <- Graph_set_Mid %>%
+  filter(Year==2020) %>% 
+  mutate(Nome = factor(Nome, Nome)) %>% 
+  arrange(desc(-Mf)) %>% 
+  ungroup() %>% 
+  top_n(50, Mf) %>% 
+  ggplot( aes(y=reorder(Nome, Mf), x=Mf)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="navy") +
+  geom_vline(xintercept = 6.172606,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mf), x=Mf, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2019/20")+
+  annotate("Text", x=6.7, y=10, label="Overall average: 6.17",
+           color="black", size = 3.5, angle= 90) 
+
+Mid_Mf_21 <- Graph_set_Mid %>%
+  filter(Year==2021) %>% 
+  arrange(desc(-Mf)) %>% 
+  ungroup() %>% 
+  top_n(50, Mf) %>% 
+  ggplot( aes(y=reorder(Nome, Mf), x=Mf)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="navy") +
+  geom_vline(xintercept = 6.197922,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mf), x=Mf, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2020/21")+
+  annotate("Text", x=6.7, y=10, label="Overall average: 6.2",
+           color="black", size = 3.5, angle= 90)
+
+Mid_Mf_22 <- Graph_set_Mid %>%
+  filter(Year==2022) %>% 
+  arrange(desc(-Mf)) %>% 
+  ungroup() %>% 
+  top_n(50, Mf) %>% 
+  ggplot( aes(y=reorder(Nome, Mf), x=Mf)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="navy") +
+  geom_vline(xintercept = 6.294959,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  geom_text(aes(y=reorder(Nome, Mf), x=Mf, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2021/22")+
+  annotate("Text", x=6.7, y=10, label="Overall average: 6.3",
+           color="black", size = 3.5, angle= 90) 
+
+annotate_figure(ggarrange(Mid_Mf_20, Mid_Mf_21, Mid_Mf_22,
+                          ncol = 3, nrow = 1),
+                top = text_grob("Average Fantagrade Midfielder", 
+                                color = "Black", size = 14),
+                bottom = text_grob("Source: Fantagazzetta.it", color="Black", size=10))
+```
+
+Because the midfield is the most populated group in a team, I have decide to show only the top 50 players according to their average grade and fanta-grade, and, as you can see, all of them result being above average for the role.
+
+The most surprising results, in my opinion come from Barella, Saponara, Candreva, Pobega, Koopmeiners when we consider only the Performance.
+To them, I would add, Barak Zaccagni Aramu and Bajrami considering the bonus as well.
+
+```{r bonus malus midfielders, fig.height=11, fig.width= 10, echo=F}
+BM_graph_20_Mid <-   Graph_set_Mid %>% 
+  filter(Year==2020) %>% 
+  mutate(ris_BM = Amount_bonus - Amount_malus, Tot_BM= Num_bonus+Num_malus) %>% 
+  ungroup() %>% 
+  top_n(50, Mv) %>% 
+  ggplot() + 
+  geom_col(aes(y=reorder(Nome, Mv), x=ris_BM, fill= Nome), alpha=.7, width=.7) +
+  scale_fill_viridis(discrete=T, option="viridis") +
+  ylab("") +
+  xlab("")+
+  labs(title = "Season 2019/20")+
+  coord_cartesian(xlim=c(-6 , NA))+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")
+
+BM_graph_21_Mid <-  Graph_set_Mid %>% 
+  filter(Year==2021) %>% 
+  mutate(ris_BM = Amount_bonus - Amount_malus, Tot_BM= Num_bonus+Num_malus) %>% 
+  ungroup() %>% 
+  top_n(50, Mv) %>% 
+  ggplot(aes(y=reorder(Nome, Mv), x=ris_BM, fill= Nome)) + 
+  geom_bar(stat="identity",  alpha=.7, width=.7) +
+  scale_fill_viridis(discrete=T, option="viridis") +
+  ylab("") +
+  xlab("")+
+  labs(title = "Season 2022/21")+
+  coord_cartesian(xlim=c(-6 , NA))+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none") 
+
+BM_graph_22_Mid <- Graph_set_Mid %>% 
+  filter(Year==2022) %>%
+  mutate(Nome=factor(Nome)) %>% 
+  mutate(ris_BM = Amount_bonus - Amount_malus, Tot_BM= Num_bonus+Num_malus) %>% 
+  ungroup() %>% 
+  top_n(50, Mv) %>% 
+  ggplot(aes(y=reorder(Nome, Mv), x=ris_BM, fill= Nome)) + 
+  geom_bar(stat="identity", alpha=.7, width=.7) +
+  scale_fill_viridis(discrete=T, option="viridis") +
+  ylab("") +
+  xlab("")+
+  labs(title = "Season 2021/22")+
+  coord_cartesian(xlim=c(-6 , NA))+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")
+  
+
+annotate_figure(ggarrange(BM_graph_20_Mid, BM_graph_21_Mid, BM_graph_22_Mid,
+                          ncol = 3, nrow = 1),
+                top = text_grob("Bonus/Malus Balance Midfielders", 
+                                color = "Black", size = 14),
+                bottom= text_grob("Source: Fantagazzetta.it", color="Black", size=10))
+```
+
+All of the midfielders considered have a positive balance between bonuses and maluses, the only exception for the current season is Anguissa (Napoli), who has apparently collected more disciplinary sanctions than bonuses.
+
+## Strickers
+
+For last, the players that will actually decide who is going to win the fanta league.
+Some people's strategy is to spend as less as possible in the other sectors to save enough money to buy the one single striker they think will win the prize for most prolific player.
+Personally, I prefer a more balanced team, but sometimes this strategy actually pays out.
+
+```{r  Stricker data, include=F, echo=F}
+Graph_set_att <- Dset_final %>%
+  filter(R == "A" &
+           (Year==2020 | Year==2021 | Year==2022)) %>% 
+  group_by(Nome, Year) %>% 
+  summarise(Mv, Mf, Gf, Ass, Pg, 
+            Gf_on_Pg=  Gf/Pg, 
+            Ass_on_Pg=  Ass/Pg,
+            Num_bonus = (Gf+ Ass +sum(Rp)),
+            Num_malus = (sum(Gs)+ sum(Amm) + sum(Esp)+ sum(`R-`)),
+            Amount_bonus = (Gf*3+ Ass +sum(Rp)*3),
+            Amount_malus = (sum(Gs)+ sum(Amm)*0.5 + sum(Esp))) %>% 
+  filter((Year==2020 & Gf>5) | (Year==2021 & Gf>5) | (Year==2022 & Gf>2) ) %>% 
+  arrange(Nome)
+
+#sat condizionate
+stat_cond <- Graph_set_att %>% 
+  group_by(Year) %>% 
+  summarise(Mean_Mv = mean(Mv), 
+            Mean_Mf = mean(Mf),
+            Sum_Gf = sum (Gf),
+            Sum_Ass = sum(Ass))
+```
+
+```{r Stricker Mv, fig.height=11, fig.width=10, echo=F}
+Att_Mv_20 <- Graph_set_att %>%
+  filter(Year==2020) %>% 
+  arrange(desc(-Mv)) %>% 
+  ggplot( aes(y=reorder(Nome, Mv), x=Mv)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="dark green") +
+  geom_vline(xintercept = 6.287600,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mv), x=Mv, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2019/20")+
+  annotate("Text", x=6.5, y=5, label="Overall average: 6.3",
+           color="black", size = 3.5, angle= 90) 
+
+
+Att_Mv_21 <- Graph_set_att %>%
+  filter(Year==2021) %>% 
+  arrange(desc(-Mv)) %>% 
+  ggplot( aes(y=reorder(Nome, Mv), x=Mv)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="dark green") +
+  geom_vline(xintercept = 6.312727,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mv), x=Mv, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2020/21")+
+  annotate("Text", x=6.5, y=5, label="Overall average: 6.3",
+           color="black", size = 3.5, angle= 90)
+
+
+Att_Mv_22 <- Graph_set_att %>%
+  filter(Year==2022) %>% 
+  arrange(desc(-Mv)) %>% 
+  ggplot( aes(y=reorder(Nome, Mv), x=Mv)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="dark green") +
+  geom_vline(xintercept = 6.388500,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mv), x=Mv, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , 6.7)) +
+  labs(title = "Season 2021/22")+
+  annotate("Text", x=6.6, y=5, label="Overall average: 6.4",
+           color="black", size = 3.5, angle=90) 
+
+
+annotate_figure(ggarrange(Att_Mv_20, Att_Mv_21, Att_Mv_22,
+                          ncol = 3, nrow = 1),
+                top = text_grob("Average Grade Strickers", 
+                                color = "Black", size = 14),
+                bottom= text_grob("Source: Fantagazzetta.it", color="Black", size=10))
+
+```
+
+```{r Mf strickers, fig.height=11, fig.width=10, echo=F}
+Att_Mf_20 <- Graph_set_att %>%
+  filter(Year==2020) %>% 
+  arrange(desc(-Mf)) %>% 
+  ggplot( aes(y=reorder(Nome, Mf), x=Mf)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="dark green") +
+  geom_vline(xintercept = 7.44,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mf), x=Mf, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2019/20")+
+  annotate("Text", x=8., y=5, label="Overall average: 7.4",
+           color="black", size = 3.5, angle= 90) 
+
+
+Att_Mf_21 <- Graph_set_att %>%
+  filter(Year==2021) %>% 
+  arrange(desc(-Mf)) %>% 
+  ggplot( aes(y=reorder(Nome, Mf), x=Mf)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="dark green") +
+  geom_vline(xintercept = 7.45,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mf), x=Mf, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2020/21")+
+  annotate("Text", x=8, y=5, label="Overall average: 7.4",
+           color="black", size = 3.5, angle= 90) 
+
+
+Att_Mf_22 <- Graph_set_att %>%
+  filter(Year==2022) %>% 
+  arrange(desc(-Mf)) %>% 
+  ggplot( aes(y=reorder(Nome, Mf), x=Mf)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill="dark green") +
+  geom_vline(xintercept = 7.42,
+             linetype="dashed", alpha=0.6,
+             color = "dark red", size=0.8) +
+  geom_text(aes(y=reorder(Nome, Mf), x=Mf, label = Pg),
+              hjust = 1.5, colour = "white", size= 2.5, fontface="bold") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(5 , NA)) +
+  labs(title = "Season 2021/22")+
+  annotate("Text", x=8, y=5, label="Overall average: 7.4",
+           color="black", size = 3.5, angle= 90) 
+
+
+annotate_figure(ggarrange(Att_Mf_20, Att_Mf_21, Att_Mf_22,
+                          ncol = 3, nrow = 1),
+                top = text_grob("Average Fantagrade Strickers", 
+                                color = "Black", size = 14),
+                bottom= text_grob("Source: Fantagazzetta.it.it", color="Black", size=10))
+```
+
+Here, differently from the other role, the difference between the grade before and after the bonus is more consistent.
+Also, it stands out that there is a higher in between variance in the grade received by the players in this group, some are well above the mean, some others are well below.
+This suggests that buying the wrong striker can cost a lot in terms of score.
+
+Checking the last two years, it is possible to see the "explosion" of players like Simeone (Verona) and Destro (Genoa), who came from disastrous seasons.
+It should also be noticed, how after an outstanding second half of the last season, Vlahovich confirmed all his potentiality.
+
+The winter transfer window for strikers is the most complicate, because, usually, the most performing players have already been taken by somebody who is not willing to trade them, of course.
+For this reason, the only option in January for Fanta-coaches is to look for players that did unexpectedly well or for player who are doing a good job far from the spotlight.
+In this sense, I would go for less sponsored players like Destro, Beto or Gabbiadini.
+
+Another important statistic to take in mind while shopping for strikers is how much they score, on average, per game.
+Here are the results:
+
+```{r Strickers goal per match, fig.height=11, fig.width=10, echo=F}
+Att_Avg_Gf_20 <- Graph_set_att %>% 
+  filter(Year==2020) %>% 
+  arrange(Gf_on_Pg) %>% 
+  mutate(Nome = factor(Nome, Nome)) %>% 
+  ggplot( aes(y=reorder(Nome, Gf_on_Pg), x=Gf_on_Pg)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill= "dark green") +
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(0.02, 0.7)) +
+   labs(title = "Season 2019/20")
+
+Att_Avg_Gf_21 <- Graph_set_att %>% 
+  filter(Year==2021) %>% 
+  arrange(Gf_on_Pg) %>% 
+  mutate(Nome = factor(Nome, Nome)) %>% 
+  ggplot( aes(y=reorder(Nome, Gf_on_Pg), x=Gf_on_Pg)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill = "Dark green") +
+  ylab("") +
+  xlab("")+
+  scale_fill_viridis(discrete=TRUE, option="viridis") +
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(0.02, 0.7)) +
+   labs(title = "Season 2020/21")
+
+Att_Avg_Gf_22 <- Graph_set_att %>% 
+  filter(Year==2022) %>% 
+  arrange(Gf_on_Pg) %>% 
+  mutate(Nome = factor(Nome, Nome)) %>% 
+  ggplot( aes(y=reorder(Nome, Gf_on_Pg), x=Gf_on_Pg)) +
+  geom_bar( stat="identity",     
+            alpha=.7, width=.7, fill = "dark green") +
+  ylab("") +
+  xlab("")+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")+
+  coord_cartesian(xlim=c(0.02, 0.7)) +
+   labs(title = "Season 2021/22")
+
+annotate_figure(ggarrange(Att_Avg_Gf_20, Att_Avg_Gf_21, Att_Avg_Gf_22,
+                          ncol = 3, nrow = 1),
+                top = text_grob("Goals per match Strickers", 
+                                color = "Black", size = 14),
+                bottom= text_grob("Source: Fantagazzetta.it.it", color="Black", size=10))
+
+```
+
+As one would expect, there is no much difference between this chart and the previous about the fanta-mean, this because scoring goals is the largest bonus a player can get and has the largest impact on its grade.
+
+Similar reasoning can be done for the bonus/malus balance, indeed, not a single striker in the three years considered has had a negative balance.
+
+```{r bonus malus strickers, fig.height=11, fig.width= 10, echo=F}
+BM_graph_20_att <-   Graph_set_att %>% 
+  filter(Year==2020) %>% 
+  mutate(ris_BM = Amount_bonus - Amount_malus, Tot_BM= Num_bonus+Num_malus) %>% 
+  ungroup() %>% 
+  top_n(50, Mv) %>% 
+  ggplot() + 
+  geom_col(aes(y=reorder(Nome, Mv), x=ris_BM, fill= Nome), alpha=.7, width=.7) +
+  scale_fill_viridis(discrete=T, option="viridis") +
+  ylab("") +
+  xlab("")+
+  labs(title = "Season 2019/20")+
+  coord_cartesian(xlim=c(-6 , NA))+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")
+
+BM_graph_21_att <-  Graph_set_att %>% 
+  filter(Year==2021) %>% 
+  mutate(ris_BM = Amount_bonus - Amount_malus, Tot_BM= Num_bonus+Num_malus) %>% 
+  ungroup() %>% 
+  top_n(50, Mv) %>% 
+  ggplot(aes(y=reorder(Nome, Mv), x=ris_BM, fill= Nome)) + 
+  geom_bar(stat="identity",  alpha=.7, width=.7) +
+  scale_fill_viridis(discrete=T, option="viridis") +
+  ylab("") +
+  xlab("")+
+  labs(title = "Season 2022/21")+
+  coord_cartesian(xlim=c(-6 , NA))+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none") 
+
+BM_graph_22_att <- Graph_set_att %>% 
+  filter(Year==2022) %>%
+  mutate(Nome=factor(Nome)) %>% 
+  mutate(ris_BM = Amount_bonus - Amount_malus, Tot_BM= Num_bonus+Num_malus) %>% 
+  ungroup() %>% 
+  top_n(50, Mv) %>% 
+  ggplot(aes(y=reorder(Nome, Mv), x=ris_BM, fill= Nome)) + 
+  geom_bar(stat="identity", alpha=.7, width=.7) +
+  scale_fill_viridis(discrete=T, option="viridis") +
+  ylab("") +
+  xlab("")+
+  labs(title = "Season 2021/22")+
+  coord_cartesian(xlim=c(-6 , NA))+
+  theme_gray() +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position="none")
+  
+
+annotate_figure(ggarrange(BM_graph_20_att, BM_graph_21_att, BM_graph_22_att,
+                          ncol = 3, nrow = 1),
+                top = text_grob("Bonus/Malus Balance Strikers", 
+                                color = "Black", size = 14),
+                bottom= text_grob("Source: Fantagazzetta.it", color="Black", size=10))
+```
+
+However, it is interesting to discuss who among the players with the highest performance has the most positive balance.
+They appear to be, without doubts, Vlahovic and Simeone, followed by Immobile.
+Which is interesting since Immobile is leading, together with Vlahovich the rank of the top scorer for Serie A. This has two implications, first Immobile may have collected more disciplinary sanctions, second Simeone and Vlahovic may be more generous toward other teammates and have recorded a higher number of winning passes.
+
+## Team statistics
+
+Everybody knows that football is a team game, hence it is not enough to analyse the statistics for single players.
+A great deal of the performances of players depends on the philosophy of the team he is playing for.
+
+Some team prefer to play offensive and to attack the opponent with fast passes and high pressing, some others prefer to wait for the opponent and counter-attack.
+Not only, some teams rely on single players, while others try to involve all players.
+
+to start, I thought it would be interesting to see which are the teams that have registered the higher fanta-average in the last three seasons:
+
+```{r, fig.height=11, fig.width=10, echo=F}
+
+Dset_final %>%
+  group_by(Squadra, Year) %>% 
+  summarise(MF_team = mean(Mf)) %>% 
+  arrange(desc(MF_team)) %>% 
+  ggplot() + 
+  geom_col(aes(x= Squadra, y=MF_team, fill=Year), position = "dodge", alpha=0.7, color="black")+
+  scale_fill_viridis(discrete=TRUE, option="viridis")  +
+  facet_wrap(~Year, scales="free",
+             labeller = labeller(Year = 
+                                   c("2020" = "Season 2019/20",
+                                     "2021" = "Season 2020/21",
+                                     "2022" = "Season 2021/22")))+
+  labs(title = "Average Fantagrade Serie A Teams",
+       caption = "Source: Fantagazzetta.it")+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.2, hjust = 0)) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  theme(legend.position = "none")+
+  scale_y_continuous( expand = expansion(mult = c(0, .05))) +
+  coord_cartesian(ylim=c(2.6, NA))+
+  ylab("Team Average Grade") +
+  xlab("")
+
+```
+
+It is honestly difficult to identify a pattern, so it is better to use another strategy.
+
+My idea is to go and check who has scored more and conceded more during the last three years.
+
+## Who scored more
+
+Atalanta results to be the team that scores more goals.
+while Inter, Napoli, Juventus, Roma, Lazio and Milan are a little behind.
+The interesting part of this graph is that it allows us to see who are the most important scorer for each team.
+If this information may result useless for big teams, it is very useful to help a person decide on which player to invest in smaller teams like Okaka for Udinese and Cornelius Barrow and Soriano for Bologna.
+
+```{r fig.height=15, fig.width=15, warning=F}
+
+# if(!require("d3treeR")) {
+#   install.packages("d3treeR")
+#   library("d3treeR")
+# }
+
+Dset_final %>%
+  rename(Giocatore = Nome) %>% 
+  rename("Goals Scored" = Gf) %>% 
+  treemap(index=c("Squadra", "Giocatore"),
+          vSize="Goals Scored",
+          type="index",
+          fontcolor.labels=c("black","white"),
+          bg.labels=c("transparent"),
+          palette = "Set2",
+          border.col=c("black","white"),
+          border.lwds=c(3,2)  ,
+            align.labels=list(
+              c("left", "top"), 
+              c("center", "center")
+            )  )
+
+
+
+```
+
+On the other hand, the teams who have demonstrated to have the worst defense.
+The very worst result to be Parma, which has also one season less than most of the other teams.
+Among the teams that have three season in the Serie A League, Sampdoria, Sassuolo, Bologna, Torino and Cagliari stand out to be the worse choice.
+
+```{r fig.height=15, fig.width=15, echo=F, warning=F}
+
+Dset_final %>%
+  rename(Giocatore = Nome,"Goals Against"= Gs) %>% 
+  treemap(index=c("Squadra", "Giocatore"),
+          vSize="Goals Against",
+          type="index",
+          fontcolor.labels=c("black","white"),
+          bg.labels="transparent",
+          palette = "Set2",
+          border.col=c("black","white"),
+          border.lwds=c(3,2)  ,
+            align.labels=list(
+              c("left", "top"), 
+              c("center", "center")
+            )  )
+
+
+```
